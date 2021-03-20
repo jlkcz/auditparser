@@ -47,6 +47,9 @@ class FileLine(LogLine):
     def __str__(self):
         return f"{self.profile}: {self.operation}({self.requested_mask}/{self.denied_mask}) {self.name} ({self.apparmor}|{self.time})" 
 
+    def fix(self):
+        return f"{self.name} {self.requested_mask}," 
+
 
 class ExecLine(LogLine):
     """Represents apparmor errors related to execution of other files"""
@@ -55,12 +58,8 @@ class ExecLine(LogLine):
     def __str__(self):
         return f"{self.profile} exec {self.name} ({self.target}). ({self.apparmor}|{self.time})"
 
-class ProfileReplaceLine(LogLine):
-    """Represents apparmor messages about profile replacement"""
-    defining_keys = ["name"]
-
-    def __str__(self):
-        return f"{self.name} replaced at: {self.time}" 
+    def fix(self):
+        return f"{self.name} Pix,"
 
 class CapableLine(LogLine):
     """Represents apparmor errors about not-allowed capabilities"""
@@ -69,6 +68,30 @@ class CapableLine(LogLine):
     def __str__(self):
         return f"{self.profile}: capability {self.capname}. ({self.apparmor}|{self.time})" 
 
+    def fix(self):
+        return f"capability {self.capname},"
+
+class SignalLine(LogLine):
+    """Represents apparmor errors about not-allowed capabilities"""
+    defining_keys = ["profile","requested_mask","denied_mask","signal","peer"]
+    
+    def __str__(self):
+        return f"{self.profile}: signal ({self.requested_mask}/{self.denied_mask} {self.signal}) to {self.peer}. ({self.apparmor}|{self.time})" 
+
+    def fix(self):
+        return f"signal ({self.requested_mask}) peer={self.peer},"
+
+
+
+class ProfileReplaceLine(LogLine):
+    """Represents apparmor messages about profile replacement"""
+    defining_keys = ["name"]
+
+    def __str__(self):
+        return f"{self.name} replaced at: {self.time}" 
+
+    def fix(self):
+        return None
 
 class UnknownLine:
     """Class for lines that make no sense to our parser"""
@@ -103,6 +126,8 @@ def logline_factory(data):
         return ExecLine(data)
     elif data['operation'] == 'profile_replace':
         return ProfileReplaceLine(data)
+    elif data['operation'] == 'signal':
+        return SignalLine(data)
     elif data['operation'] in ['file_inherit', 'file_lock', 'file_mmap', 'file_perm', 'mknod', 'open', 'rename_dest', 'rename_src', 'unlink', 'chmod']:
         return FileLine(data)
     else:
@@ -148,6 +173,7 @@ parser = argparse.ArgumentParser(prog='auditparser', usage='%(prog)s [options]',
 parser.add_argument('-t', '--since', type=lambda s: dateparser.parse(s), default='1d', help='Human readable date (like 1d, 1h) since when we should display logs')
 parser.add_argument('-p', '--profile', type=str, help='show only lines for this profile')
 parser.add_argument('-u', '--unknown-only', action="store_true", help='show only unknown lines')
+parser.add_argument('-f', '--fix', action="store_true", help='show fixes instead of error lines')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('-l', '--logfile', type=str, default='/var/log/audit/audit.log', help='location of the audit.log file')
 group.add_argument('-s', '--stdin', action='store_true', help='read log data from stdin')
@@ -190,6 +216,10 @@ if __name__ == '__main__':
     all_lines = get_all_lines(log_file, log_age, args.profile)
     counter = Counter(map(hash,all_lines))
 
+    if args.fix:
+        print('\033[91m*****************************************************************************')
+        print("** WARNING! These are only suggestions. Admins discretion needed! WARNING! **")
+        print("*****************************************************************************\033[0m")
     #known lines are processed only if there is no -u switch
     if not args.unknown_only:
         known_lines = list(set([line for line in all_lines if not isinstance(line, UnknownLine)]))
@@ -200,9 +230,12 @@ if __name__ == '__main__':
         for group in groups:
             print(f"===== profile {group[0]} ======")
             for line in group[1]:
-                count = counter[hash(line)]
-                line_str = str(line)
-                print(f'{count:3}x: {line_str}')
+                if args.fix:
+                    print(line.fix())
+                else:
+                    count = counter[hash(line)]
+                    line_str = str(line)
+                    print(f'{count:3}x: {line_str}')
     
     #if there are any unknown lines, print them
     unknown_lines = set([line for line in all_lines if isinstance(line, UnknownLine)])
