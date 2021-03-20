@@ -108,7 +108,7 @@ def logline_factory(data):
     else:
         raise ValueError
 
-def get_all_lines(filename, age):
+def get_all_lines(filename, age, search_pattern=None):
     all_lines = []
     with open(filename,'r') as f:
         for line in f:
@@ -119,9 +119,13 @@ def get_all_lines(filename, age):
             #parses matches into a dict
             data = parse_all(line)
 
+            #not AVC, not interesting
             if data['type'] != 'AVC':
-                #not AVC, not interesting
                 continue
+
+            #only find
+            if search_pattern and not re.search(search_pattern, data['profile']):
+                    continue
 
             try:
                 line_obj = logline_factory(data)
@@ -141,12 +145,12 @@ def is_file(string):
 ############## Here lies __main__ behaviour ###################################
 
 parser = argparse.ArgumentParser(prog='auditparser', usage='%(prog)s [options]', description='Gets AppArmor log data from auditd logs')
+parser.add_argument('-t', '--since', type=lambda s: dateparser.parse(s), default='1d', help='Human readable date (like 1d, 1h) since when we should display logs')
+parser.add_argument('-p', '--profile', type=str, help='show only lines for this profile')
+parser.add_argument('-u', '--unknown-only', action="store_true", help='show only unknown lines')
 group = parser.add_mutually_exclusive_group()
 group.add_argument('-l', '--logfile', type=str, default='/var/log/audit/audit.log', help='location of the audit.log file')
 group.add_argument('-s', '--stdin', action='store_true', help='read log data from stdin')
-parser.add_argument('-t', '--since', type=lambda s: dateparser.parse(s), default='1d', help='Human readable date (like 1d, 1h) since when we should display logs')
-parser.add_argument('-u', '--unknown-only', action="store_true", help='show only unknown lines')
-parser.add_argument('-p', '--profile', type=str, help='show only lines for this profile')
 parser.add_argument('-m', '--manual', action='store_true', help='show abridged AppArmor manual')
 
 AA_MANUAL="""These are basic hints for AppArmor profile.
@@ -166,13 +170,14 @@ Ux - the new process should run unconfined
 More info at: https://gitlab.com/apparmor/apparmor/-/wikis/QuickProfileLanguage"""
 
 
-
 if __name__ == '__main__':
     #manage arguments
     args = parser.parse_args()
     if args.manual:
         print(AA_MANUAL)
         sys.exit(0)
+
+    log_age = args.since.timestamp()
     log_file = '/dev/stdin' if args.stdin else args.logfile
     if not args.stdin:
         try:
@@ -180,12 +185,10 @@ if __name__ == '__main__':
         except FileNotFoundError:
             print(f"No such logfile: {log_file}")
             sys.exit(1)
-    log_age = args.since.timestamp()
 
     #parse and sort all lines
-    all_lines = get_all_lines(log_file, log_age)
+    all_lines = get_all_lines(log_file, log_age, args.profile)
     counter = Counter(map(hash,all_lines))
-    unknown_lines = set([line for line in all_lines if isinstance(line, UnknownLine)])
 
     #known lines are processed only if there is no -u switch
     if not args.unknown_only:
@@ -195,9 +198,6 @@ if __name__ == '__main__':
         known_lines.sort(key = attrgetter('profile'))
         groups = groupby(known_lines, attrgetter('profile'))
         for group in groups:
-            if args.profile:
-                if not re.search(args.profile, group[0]):
-                    continue
             print(f"===== profile {group[0]} ======")
             for line in group[1]:
                 count = counter[hash(line)]
@@ -205,6 +205,7 @@ if __name__ == '__main__':
                 print(f'{count:3}x: {line_str}')
     
     #if there are any unknown lines, print them
+    unknown_lines = set([line for line in all_lines if isinstance(line, UnknownLine)])
     if unknown_lines:
         print(f"===== Unknown/unparseable lines ======")
         for line in unknown_lines:
