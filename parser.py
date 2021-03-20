@@ -53,10 +53,10 @@ class FileLine(LogLine):
 
 class ExecLine(LogLine):
     """Represents apparmor errors related to execution of other files"""
-    defining_keys = ["apparmor", "operation", "profile", "name", "target"]
+    defining_keys = ["apparmor", "operation", "profile", "name", "comm", "requested_mask", "denied_mask"]
 
     def __str__(self):
-        return f"{self.profile} exec {self.name} ({self.target}). ({self.apparmor}|{self.time})"
+        return f"{self.profile} exec {self.name} with comm={self.comm} ({self.requested_mask}/{self.denied_mask}). ({self.apparmor}|{self.time})"
 
     def fix(self):
         return f"{self.name} Pix,"
