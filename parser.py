@@ -83,15 +83,31 @@ class SignalLine(LogLine):
 
 
 
-class ProfileReplaceLine(LogLine):
+class ProfileLoadLine(LogLine):
     """Represents apparmor messages about profile replacement"""
     defining_keys = ["name"]
 
+    @property
+    def action(self):
+        return self.operation.split('_')[1]
+
     def __str__(self):
-        return f"{self.name} replaced at: {self.time}" 
+        return f"{self.name} {self.action} at: {self.time}" 
 
     def fix(self):
         return None
+
+
+class ChangeProfileLine(LogLine):
+    """Represents errors when proces is switching profiles"""
+    defining_keys = ["info", "profile", "name"]
+    
+    def __str__(self):
+        return f"{self.profile} switching to {self.name} failed: {self.info} at: {self.time}" 
+
+    def fix(self):
+        return None
+
 
 class UnknownLine:
     """Class for lines that make no sense to our parser"""
@@ -119,16 +135,17 @@ def parse_all(line):
 
 
 def logline_factory(data):
-
     if data['operation'] == 'capable':
         return CapableLine(data)
     elif data['operation'] == 'exec':
         return ExecLine(data)
-    elif data['operation'] == 'profile_replace':
-        return ProfileReplaceLine(data)
+    elif data['operation'] in ['profile_replace', 'profile_load', 'profile_remove']:
+        return ProfileLoadLine(data)
     elif data['operation'] == 'signal':
         return SignalLine(data)
-    elif data['operation'] in ['file_inherit', 'file_lock', 'file_mmap', 'file_perm', 'mknod', 'open', 'rename_dest', 'rename_src', 'unlink', 'chmod']:
+    elif data['operation'] == 'change_profile':
+        return ChangeProfileLine(data)
+    elif data['operation'] in ['file_inherit', 'file_lock', 'file_mmap', 'file_perm', 'mknod', 'open', 'rename_dest', 'rename_src', 'unlink', 'chmod', 'chown']:
         return FileLine(data)
     else:
         raise ValueError
