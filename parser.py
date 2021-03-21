@@ -216,13 +216,6 @@ def get_all_lines(filename, age, search_pattern=None):
     return all_lines
 
 
-def is_file(string):
-    if os.path.isfile(string):
-        return string
-    else:
-        raise FileNotFoundError(string)
-
-
 ############## Here lies __main__ behaviour ###################################
 
 parser = argparse.ArgumentParser(
@@ -294,9 +287,7 @@ if __name__ == "__main__":
     log_age = args.since.timestamp()
     log_file = "/dev/stdin" if args.stdin else args.logfile
     if not args.stdin:
-        try:
-            is_file(log_file)
-        except FileNotFoundError:
+        if not is_file(log_file):
             print(f"No such logfile: {log_file}")
             sys.exit(1)
 
