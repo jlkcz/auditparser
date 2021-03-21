@@ -5,7 +5,7 @@ import re
 import sys
 import time
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import groupby
 from operator import attrgetter
 
@@ -22,6 +22,7 @@ class LogLine:
     defining_keys = ["apparmor", "operation", "msg"]
 
     def __init__(self, data):
+        self.count = 0
         for k, v in data.items():
             setattr(self, k, v)
         self.time = parse_time(self.msg)
@@ -215,6 +216,27 @@ def get_all_lines(filename, age, search_pattern=None):
             all_lines.append(line_obj)
     return all_lines
 
+def sort_lines(lines):
+    """ sort lines into separate groups"""
+    known_lines = [line for line in all_lines if not isinstance(line, UnknownLine)]
+    unknown_lines = [line for line in all_lines if isinstance(line, UnknownLine)]
+    return {"known": known_lines, "unknown": unknown_lines}
+
+
+def deduplicate_lines(lines):
+    """ Deduplicates lines and adds counts"""
+    counter = Counter(map(hash, lines))
+    unique_list = list(set(lines))
+    for line in unique_list:
+        line.count = counter[hash(line)]
+    return list(unique_list)
+
+def group_lines(lines):
+    grouped_lines = defaultdict(list)
+    for line in lines:
+        grouped_lines[line.profile].append(line)
+    return grouped_lines
+
 
 ############## Here lies __main__ behaviour ###################################
 
@@ -287,13 +309,13 @@ if __name__ == "__main__":
     log_age = args.since.timestamp()
     log_file = "/dev/stdin" if args.stdin else args.logfile
     if not args.stdin:
-        if not is_file(log_file):
+        if not os.path.isfile(log_file):
             print(f"No such logfile: {log_file}")
             sys.exit(1)
 
     # parse and sort all lines
     all_lines = get_all_lines(log_file, log_age, args.profile)
-    counter = Counter(map(hash, all_lines))
+    categorized_lines = sort_lines(all_lines)
 
     if args.fix:
         print("\033[91m*****************************************************************************")
@@ -302,25 +324,21 @@ if __name__ == "__main__":
 
     # known lines are processed only if there is no -u switch
     if not args.unknown_only:
-        known_lines = list(
-            set([line for line in all_lines if not isinstance(line, UnknownLine)])
-        )
+        deduped_lines = deduplicate_lines(categorized_lines["known"])
+        groups = group_lines(deduped_lines)
 
         # lets print known issues profile by profile
-        known_lines.sort(key=attrgetter("profile"))
-        groups = groupby(known_lines, attrgetter("profile"))
-        for group in groups:
-            print(f"===== profile {group[0]} ======")
-            for line in group[1]:
+        for name in sorted(groups.keys()):
+            print(f"===== profile {name} ======")
+            for line in groups[name]:
                 if args.fix:
                     print(line.fix())
                 else:
-                    count = counter[hash(line)]
                     line_str = str(line)
-                    print(f"{count:3}x: {line_str}")
+                    print(f"{line.count}x: {line_str}")
 
     # if there are any unknown lines, print them
-    unknown_lines = set([line for line in all_lines if isinstance(line, UnknownLine)])
+    unknown_lines = set(categorized_lines["unknown"])
     if unknown_lines:
         print(f"===== Unknown/unparseable lines ======")
         for line in unknown_lines:
