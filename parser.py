@@ -5,13 +5,26 @@ import re
 import sys
 import time
 import argparse
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 from itertools import groupby
 from operator import attrgetter
 
 # non-stdlib dependencies
-import dateparser
+try:
+    import dateparser
+    raise ImportError
+    DATEPARSER_MISSING = False
+except ImportError:
+    DATEPARSER_MISSING = True
+    import datetime
 
+try:
+    from tabulate import tabulate
+    TABULATE_MISSING = False
+except ImportError:
+    TABULATE_MISSING = True
+
+from pprint import pprint
 
 regex = re.compile(r'(?P<attr>\S+)=(("(?P<val1>[^"]+)")|(?P<val2>\S+))')
 
@@ -41,6 +54,15 @@ class LogLine:
             [getattr(self, key) == getattr(other, key) for key in self.defining_keys]
         )
 
+    def _init_tabulize(self):
+        return OrderedDict(
+            count=self.count,
+            operation=self.operation,
+            content=None,
+            apparmor=self.apparmor,
+            time=self.time,
+        )
+
 
 class FileLine(LogLine):
     """Represents apparmor errors related to files (permissions, manipulation)"""
@@ -59,6 +81,11 @@ class FileLine(LogLine):
 
     def fix(self):
         return f"{self.name} {self.requested_mask},"
+
+    def asdict(self):
+        data = self._init_tabulize()
+        data["content"] = f"{self.name} ({self.requested_mask})"
+        return data
 
 
 class ExecLine(LogLine):
@@ -80,6 +107,11 @@ class ExecLine(LogLine):
     def fix(self):
         return f"{self.name} Pix,"
 
+    def asdict(self):
+        data = self._init_tabulize()
+        data["content"] = f"{self.name} comm={self.comm} ({self.requested_mask})"
+        return data
+
 
 class CapableLine(LogLine):
     """Represents apparmor errors about not-allowed capabilities"""
@@ -94,6 +126,11 @@ class CapableLine(LogLine):
     def fix(self):
         return f"capability {self.capname},"
 
+    def asdict(self):
+        data = self._init_tabulize()
+        data["content"] = f"capability: {self.capname}"
+        return data
+
 
 class SignalLine(LogLine):
     """Represents apparmor errors about not-allowed capabilities"""
@@ -105,6 +142,11 @@ class SignalLine(LogLine):
 
     def fix(self):
         return f"signal ({self.requested_mask}) peer={self.peer},"
+
+    def asdict(self):
+        data = self._init_tabulize()
+        data["content"] = f"{self.signal} to {self.peer} ({self.requested_mask})"
+        return data
 
 
 class ProfileLoadLine(LogLine):
@@ -122,6 +164,11 @@ class ProfileLoadLine(LogLine):
     def fix(self):
         return None
 
+    def asdict(self):
+        data = self._init_tabulize()
+        data["content"] = f"{self.action} {self.name}"
+        return data
+
 
 class ChangeProfileLine(LogLine):
     """Represents errors when proces is switching profiles"""
@@ -133,6 +180,11 @@ class ChangeProfileLine(LogLine):
 
     def fix(self):
         return None
+
+    def asdict(self):
+        data = self._init_tabulize()
+        data["content"] = f"Switch to {self.profile} failed with: {self.info}"
+        return data
 
 
 class UnknownLine:
@@ -216,6 +268,7 @@ def get_all_lines(filename, age, search_pattern=None):
             all_lines.append(line_obj)
     return all_lines
 
+
 def sort_lines(lines):
     """ sort lines into separate groups"""
     known_lines = [line for line in all_lines if not isinstance(line, UnknownLine)]
@@ -231,6 +284,7 @@ def deduplicate_lines(lines):
         line.count = counter[hash(line)]
     return list(unique_list)
 
+
 def group_lines(lines):
     grouped_lines = defaultdict(list)
     for line in lines:
@@ -245,13 +299,23 @@ parser = argparse.ArgumentParser(
     usage="%(prog)s [options]",
     description="Gets AppArmor log data from auditd logs",
 )
-parser.add_argument(
-    "-t",
-    "--since",
-    type=lambda s: dateparser.parse(s),
-    default="1d",
-    help="Human readable date (like 1d, 1h) since when to display logs (default: 1d)",
-)
+if DATEPARSER_MISSING:
+    parser.add_argument(
+        "-t",
+        "--since",
+        type=lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M"),
+        default=datetime.datetime.now() - datetime.timedelta(days=1),
+        help="Datetime since when should logs be parser (2021-), default last 24 hours. Install dateparser lib for better functionality",
+    )
+
+else:
+    parser.add_argument(
+        "-t",
+        "--since",
+        type=lambda s: dateparser.parse(s),
+        default="1d",
+        help="Human readable date (like 1d, 1h) since when to display logs (default: 1d)",
+    )
 parser.add_argument(
     "-p", "--profile", type=str, help="show only lines for this profile (can be regex)"
 )
@@ -300,9 +364,9 @@ More info at: https://gitlab.com/apparmor/apparmor/-/wikis/QuickProfileLanguage"
 
 
 if __name__ == "__main__":
-    # manage arguments
     args = parser.parse_args()
     if args.manual:
+        #We want just the manual, no need to continue
         print(AA_MANUAL)
         sys.exit(0)
 
@@ -313,7 +377,7 @@ if __name__ == "__main__":
             print(f"No such logfile: {log_file}")
             sys.exit(1)
 
-    # parse and sort all lines
+    # parse and sort all lines into categories we use later
     all_lines = get_all_lines(log_file, log_age, args.profile)
     categorized_lines = sort_lines(all_lines)
 
@@ -327,15 +391,24 @@ if __name__ == "__main__":
         deduped_lines = deduplicate_lines(categorized_lines["known"])
         groups = group_lines(deduped_lines)
 
-        # lets print known issues profile by profile
+        # processing profile by profile
         for name in sorted(groups.keys()):
-            print(f"===== profile {name} ======")
-            for line in groups[name]:
-                if args.fix:
+            print(f"\n===== profile {name} ======")
+            #sorting lines by occurence
+            lines = sorted(groups[name], key=attrgetter("count"), reverse=True)
+            if args.fix:
+                # some missing lines do not have fixes and are ignored instead of showing None
+                lines_not_null = (line for line in lines if line.fix() is not None)
+                for line in lines_not_null:
                     print(line.fix())
-                else:
+
+            if TABULATE_MISSING:
+                for line in lines:
                     line_str = str(line)
                     print(f"{line.count}x: {line_str}")
+            else:
+                lines = map(lambda x: x.asdict(), lines)
+                print(tabulate(lines, headers="keys", tablefmt="github"))
 
     # if there are any unknown lines, print them
     unknown_lines = set(categorized_lines["unknown"])
@@ -343,4 +416,3 @@ if __name__ == "__main__":
         print(f"===== Unknown/unparseable lines ======")
         for line in unknown_lines:
             print(line)
-
