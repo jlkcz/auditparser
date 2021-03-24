@@ -242,7 +242,7 @@ def logline_factory(data):
         raise ValueError
 
 
-def get_all_lines(filename, age, search_pattern=None):
+def get_all_lines(filename, age, search=None, search_pattern=None):
     all_lines = []
     with open(filename, "r") as f:
         for line in f:
@@ -257,9 +257,13 @@ def get_all_lines(filename, age, search_pattern=None):
             if data["type"] != "AVC":
                 continue
 
-            # only find
-            if search_pattern and not re.search(search_pattern, data["profile"]):
-                continue
+            # user defined filter
+            if search:
+                if search == "regex" and not re.search(search_pattern, data["profile"]):
+                    continue
+                
+                if search == "match" and not search_pattern == data["profile"]:
+                    continue
 
             try:
                 line_obj = logline_factory(data)
@@ -316,8 +320,12 @@ else:
         default="1d",
         help="Human readable date (like 1d, 1h) since when to display logs (default: 1d)",
     )
-parser.add_argument(
-    "-p", "--profile", type=str, help="show only lines for this profile (can be regex)"
+substr_or_regex = parser.add_mutually_exclusive_group()
+substr_or_regex.add_argument(
+    "-p", "--profile", type=str, help="show only lines for this profile (exact match)"
+)
+substr_or_regex.add_argument(
+    "-r", "--regex", type=str, help="show only lines matching supplied regular expression"
 )
 parser.add_argument(
     "-u", "--unknown-only", action="store_true", help="show only unknown lines"
@@ -328,15 +336,15 @@ parser.add_argument(
     action="store_true",
     help="show suggested fixes instead of error lines",
 )
-group = parser.add_mutually_exclusive_group()
-group.add_argument(
+log_or_stdin = parser.add_mutually_exclusive_group()
+log_or_stdin.add_argument(
     "-l",
     "--logfile",
     type=str,
     default="/var/log/audit/audit.log",
     help="location of the audit.log file. (default: /var/log/audit/audit.log)",
 )
-group.add_argument(
+log_or_stdin.add_argument(
     "-s",
     "--stdin",
     action="store_true",
@@ -378,7 +386,12 @@ if __name__ == "__main__":
             sys.exit(1)
 
     # parse and sort all lines into categories we use later
-    all_lines = get_all_lines(log_file, log_age, args.profile)
+    if args.regex:
+        all_lines = get_all_lines(log_file, log_age, "regex", args.regex)
+    elif args.profile:
+        all_lines = get_all_lines(log_file, log_age, "match", args.profile)
+    else:
+        all_lines = get_all_lines(log_file, log_age)
     categorized_lines = sort_lines(all_lines)
 
     if args.fix:
