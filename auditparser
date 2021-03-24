@@ -333,7 +333,7 @@ parser.add_argument(
     "-f",
     "--fix",
     action="store_true",
-    help="show suggested fixes instead of error lines",
+    help="show suggested fixes instead of error lines. WARNING: This ignores some lines!",
 )
 log_or_stdin = parser.add_mutually_exclusive_group()
 log_or_stdin.add_argument(
