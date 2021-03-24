@@ -12,7 +12,6 @@ from operator import attrgetter
 # non-stdlib dependencies
 try:
     import dateparser
-    raise ImportError
     DATEPARSER_MISSING = False
 except ImportError:
     DATEPARSER_MISSING = True
@@ -309,7 +308,7 @@ if DATEPARSER_MISSING:
         "--since",
         type=lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M"),
         default=datetime.datetime.now() - datetime.timedelta(days=1),
-        help="Datetime since when should logs be parser (2021-), default last 24 hours. Install dateparser lib for better functionality",
+        help="Datetime since when should logs be parser (2021-03-01 16:59), default is last 24 hours. Install dateparser lib for better functionality",
     )
 
 else:
