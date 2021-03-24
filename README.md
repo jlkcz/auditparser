@@ -64,7 +64,7 @@ apt install python3-tabulate python3-dateparser
 
 Auditparser is primarily developed for Python 3.9 (Debian bullseye) but works with Python3.8 as well
 
-##Shortcomings
+## Shortcomings
 Currently does not manage to read all lines possibly emitted by AppArmor. If you want more, send patches or use parser provided by AppArmor itself. It is also in Python, see https://gitlab.com/apparmor/apparmor/-/blob/master/utils/apparmor/logparser.py
 
 
