@@ -1,4 +1,4 @@
-#Dateparser
+# Dateparser
 Dateparser is simple parser for auditd log files which is only interested in AppArmor lines. It outputs nice sysadmin friendly summaries:
 
 ```
@@ -46,7 +46,7 @@ option `--fix` offers a simple suggestion which line will fix current errors. Ho
 See `auditparser --help`
 
 ## Why?
-Reading audit.log sucks and filtering it sucks even more. Especially, if you are using AppArmor because `ausearch` or `aureport` because old bugs no-one appears to be solving. See for example https://bugs.launchpad.net/ubuntu/+source/audit/+bug/1117804 
+Reading audit.log sucks and filtering it sucks even more. Especially, if you are using AppArmor because `ausearch` or `aureport` do not work on it (try `ausearch -m AVC -if audit.log` and you will get nothing) due to old bugs no-one appears to be solving. See for example https://bugs.launchpad.net/ubuntu/+source/audit/+bug/1117804 
 
 ## Installation
 Simply download or clone this repo, auditparser should start working. See section Dependencies if you want nicer behaviour
@@ -62,7 +62,7 @@ If those dependencies are not available, script will fallback to other less nice
 apt install python3-tabulate python3-dateparser
 ```
 
-Auditparser is primarily developed for Python 3.9 (Debian bullseye) but works with Python3.8 as well
+Auditparser is primarily developed for Python 3.9 (Debian bullseye) but works with Python 3.8 as well. Haven't tested others, but it relies on f-strings, so Python 3.6 is minimum.
 
 ## Shortcomings
 Currently does not manage to read all lines possibly emitted by AppArmor. If you want more, send patches or use parser provided by AppArmor itself. It is also in Python, see https://gitlab.com/apparmor/apparmor/-/blob/master/utils/apparmor/logparser.py
