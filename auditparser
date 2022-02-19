@@ -253,6 +253,7 @@ def logline_factory(data):
         "unlink",
         "chmod",
         "chown",
+        "truncate"
     ]:
         return FileLine(data)
     else:
