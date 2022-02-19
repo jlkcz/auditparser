@@ -185,6 +185,22 @@ class ChangeProfileLine(LogLine):
         data["content"] = f"Switch to {self.profile} failed with: {self.info}"
         return data
 
+class ChangeHatLine(LogLine):
+    """Represents errors when proces is switching profiles"""
+
+    defining_keys = ["profile", "target"]
+
+    def __str__(self):
+        return f"{self.profile} switching hat to {self.target} failed: {self.info} at: {self.time}"
+
+    def fix(self):
+        return None
+
+    def asdict(self):
+        data = self._init_tabulize()
+        data["content"] = f"{self.target}"
+        return data
+
 
 class UnknownLine:
     """Class for lines that make no sense to our parser"""
@@ -223,6 +239,8 @@ def logline_factory(data):
         return SignalLine(data)
     elif data["operation"] == "change_profile":
         return ChangeProfileLine(data)
+    elif data["operation"] == "change_hat":
+        return ChangeHatLine(data)
     elif data["operation"] in [
         "file_inherit",
         "file_lock",
