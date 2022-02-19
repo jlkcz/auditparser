@@ -172,17 +172,17 @@ class ProfileLoadLine(LogLine):
 class ChangeProfileLine(LogLine):
     """Represents errors when proces is switching profiles"""
 
-    defining_keys = ["info", "profile", "name"]
+    defining_keys = ["profile", "target"]
 
     def __str__(self):
-        return f"{self.profile} switching to {self.name} failed: {self.info} at: {self.time}"
+        return f"{self.profile} switching hat to {self.target} failed: {self.info} at: {self.time}"
 
     def fix(self):
         return None
 
     def asdict(self):
         data = self._init_tabulize()
-        data["content"] = f"Switch to {self.profile} failed with: {self.info}"
+        data["content"] = f"{self.target}"
         return data
 
 class ChangeHatLine(LogLine):
